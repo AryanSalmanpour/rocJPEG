@@ -46,11 +46,12 @@ list(APPEND CMAKE_PREFIX_PATH ${ROCM_PATH}/hip ${ROCM_PATH})
 
 find_package(HIP QUIET)
 find_package(rocJPEG QUIET)
+find_package(rocprofiler-register QUIET)
 
 # threads
 find_package(Threads REQUIRED)
 
-if(HIP_FOUND AND ROCJPEG_FOUND AND Threads_FOUND)
+if(HIP_FOUND AND ROCJPEG_FOUND AND Threads_FOUND AND rocprofiler-register_FOUND)
     # HIP
     set(LINK_LIBRARY_LIST ${LINK_LIBRARY_LIST} hip::host)
     #threads
@@ -58,6 +59,8 @@ if(HIP_FOUND AND ROCJPEG_FOUND AND Threads_FOUND)
     set(LINK_LIBRARY_LIST ${LINK_LIBRARY_LIST} Threads::Threads)
     # std filesystem
     set(LINK_LIBRARY_LIST ${LINK_LIBRARY_LIST} stdc++fs)
+    # rocprofiler-register
+    set(LINK_LIBRARY_LIST ${LINK_LIBRARY_LIST} rocprofiler-register::rocprofiler-register)
 
     # rocJPEG
     include_directories (${ROCJPEG_INCLUDE_DIR})
@@ -76,5 +79,8 @@ else()
     endif()
     if (NOT Threads_FOUND)
         message(FATAL_ERROR "-- ERROR!: Threads Not Found! - please insatll Threads!")
+    endif()
+    if (NOT rocprofiler-register_FOUND)
+        message(FATAL_ERROR "-- ERROR!: rocprofiler-register Not Found! - please install rocprofiler-register!")
     endif()
 endif()
