@@ -71,31 +71,35 @@ void DecodeImages(DecodeInfo &decode_info, RocJpegUtils rocjpeg_utils, RocJpegDe
     std::vector<uint32_t> temp_heights(ROCJPEG_MAX_COMPONENT, 0);
     RocJpegChromaSubsampling temp_subsampling;
     std::string temp_base_file_name;
+    int loop = 10000;
 
+    temp_base_file_name = decode_info.file_paths[0].substr(decode_info.file_paths[0].find_last_of("/\\") + 1);
+    // Read one image from disk.
+    std::ifstream input(decode_info.file_paths[0].c_str(), std::ios::in | std::ios::binary | std::ios::ate);
+    if (!(input.is_open())) {
+        std::cerr << "ERROR: Cannot open image: " << decode_info.file_paths[0] << std::endl;
+        return;
+    }
+
+    // Get the size
+    std::streamsize file_size = input.tellg();
+    // resize if buffer is too small
+    for (int j = 0; j < batch_size; j++) {
+        input.seekg(0, std::ios::beg);
+        if (batch_images[j].size() < file_size) {
+            batch_images[j].resize(file_size);
+        }
+        if (!input.read(batch_images[j].data(), file_size)) {
+            std::cerr << "ERROR: Cannot read from file: " << decode_info.file_paths[0] << std::endl;
+            return;
+        }
+    }
+
+    int count = 1;
     CHECK_HIP(hipSetDevice(device_id));
-    for (int i = 0; i < decode_info.file_paths.size(); i += batch_size) {
-        int batch_end = std::min(i + batch_size, static_cast<int>(decode_info.file_paths.size()));
-        for (int j = i; j < batch_end; j++) {
-            int index = j - i;
-
-            temp_base_file_name = decode_info.file_paths[j].substr(decode_info.file_paths[j].find_last_of("/\\") + 1);
-            // Read an image from disk.
-            std::ifstream input(decode_info.file_paths[j].c_str(), std::ios::in | std::ios::binary | std::ios::ate);
-            if (!(input.is_open())) {
-                std::cerr << "ERROR: Cannot open image: " << decode_info.file_paths[j] << std::endl;
-                return;
-            }
-            // Get the size
-            std::streamsize file_size = input.tellg();
-            input.seekg(0, std::ios::beg);
-            // resize if buffer is too small
-            if (batch_images[index].size() < file_size) {
-                batch_images[index].resize(file_size);
-            }
-            if (!input.read(batch_images[index].data(), file_size)) {
-                std::cerr << "ERROR: Cannot read from file: " << decode_info.file_paths[j] << std::endl;
-                return;
-            }
+    for (int i = 0; i < loop; i += batch_size, count++) {
+        for (int j = i; j < batch_size * count; j++) {
+            int index = (j - i) % batch_size;
 
             RocJpegStatus rocjpeg_status = rocJpegStreamParse(reinterpret_cast<uint8_t*>(batch_images[index].data()), file_size, decode_info.rocjpeg_stream_handles[index]);
             if (rocjpeg_status != ROCJPEG_STATUS_SUCCESS) {
