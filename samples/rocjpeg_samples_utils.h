@@ -87,7 +87,7 @@ public:
      * @param argv The command line arguments.
      */
     static void ParseCommandLine(std::string &input_path, std::string &output_file_path, bool &save_images, int &device_id,
-                                 RocJpegBackend &rocjpeg_backend, RocJpegDecodeParams &decode_params, int *num_threads, int *batch_size, int argc, char *argv[]) {
+                                 RocJpegBackend &rocjpeg_backend, RocJpegDecodeParams &decode_params, int *num_threads, int *batch_size, int *num_loops, int argc, char *argv[]) {
         if(argc <= 1) {
             ShowHelpAndExit("", num_threads != nullptr, batch_size != nullptr);
         }
@@ -162,6 +162,14 @@ public:
                 }
                 if (batch_size != nullptr)
                     *batch_size = atoi(argv[i]);
+                continue;
+            }
+            if (!strcmp(argv[i], "-l")) {
+                if (++i == argc) {
+                    ShowHelpAndExit("-l", num_threads != nullptr, batch_size != nullptr, num_loops != nullptr);
+                }
+                if (num_loops != nullptr)
+                    *num_loops = atoi(argv[i]);
                 continue;
             }
             if (!strcmp(argv[i], "-crop")) {
@@ -637,7 +645,7 @@ private:
      * @param option The option to display in the help message (optional).
      * @param show_threads Flag indicating whether to show the number of threads in the help message.
      */
-    static void ShowHelpAndExit(const char *option = nullptr, bool show_threads = false, bool show_batch_size = false) {
+    static void ShowHelpAndExit(const char *option = nullptr, bool show_threads = false, bool show_batch_size = false, bool show_num_loops = false) {
         std::cout  << "Options:\n"
         "-i     [input path] - input path to a single JPEG image or a directory containing JPEG images - [required]\n"
         "-be    [backend] - select rocJPEG backend (0 for hardware-accelerated JPEG decoding using VCN,\n"
@@ -651,6 +659,9 @@ private:
         }
         if (show_batch_size) {
             std::cout << "-b     [batch_size] - decode images from input by batches of a specified size - [optional - default: 1]\n";
+        }
+        if (show_num_loops) {
+            std::cout << "-l     [num_loop] - decode images from input num_loop times - [optional - default: 10000]\n";
         }
         exit(0);
     }

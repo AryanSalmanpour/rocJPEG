@@ -45,7 +45,7 @@ struct DecodeInfo {
  * @param output_file_path The file path where the decoded images will be saved.
  * @param batch_size The number of images to be processed in each batch.
  */
-void DecodeImages(DecodeInfo &decode_info, RocJpegUtils rocjpeg_utils, RocJpegDecodeParams &decode_params, bool save_images, std::string &output_file_path, int batch_size, int device_id) {
+void DecodeImages(DecodeInfo &decode_info, RocJpegUtils rocjpeg_utils, RocJpegDecodeParams &decode_params, bool save_images, std::string &output_file_path, int batch_size, int device_id, int loop) {
 
     bool is_roi_valid = false;
     uint32_t roi_width;
@@ -71,7 +71,6 @@ void DecodeImages(DecodeInfo &decode_info, RocJpegUtils rocjpeg_utils, RocJpegDe
     std::vector<uint32_t> temp_heights(ROCJPEG_MAX_COMPONENT, 0);
     RocJpegChromaSubsampling temp_subsampling;
     std::string temp_base_file_name;
-    int loop = 10000;
 
     temp_base_file_name = decode_info.file_paths[0].substr(decode_info.file_paths[0].find_last_of("/\\") + 1);
     // Read one image from disk.
@@ -205,6 +204,7 @@ int main(int argc, char **argv) {
     bool save_images = false;
     int num_threads = 1;
     int batch_size = 1;
+    int num_loops = 10000;
     bool is_dir = false;
     bool is_file = false;
     RocJpegBackend rocjpeg_backend = ROCJPEG_BACKEND_HARDWARE;
@@ -214,7 +214,7 @@ int main(int argc, char **argv) {
     std::vector<std::string> file_paths = {};
     std::vector<DecodeInfo> decode_info_per_thread;
 
-    RocJpegUtils::ParseCommandLine(input_path, output_file_path, save_images, device_id, rocjpeg_backend, decode_params, &num_threads, &batch_size, argc, argv);
+    RocJpegUtils::ParseCommandLine(input_path, output_file_path, save_images, device_id, rocjpeg_backend, decode_params, &num_threads, &batch_size, &num_loops, argc, argv);
     if (!RocJpegUtils::GetFilePaths(input_path, file_paths, is_dir, is_file)) {
         std::cerr << "ERROR: Failed to get input file paths!" << std::endl;
         return EXIT_FAILURE;
@@ -258,7 +258,7 @@ int main(int argc, char **argv) {
 
     std::cout << "Decoding started with " << num_threads << " threads, please wait!" << std::endl;
     for (int i = 0; i < num_threads; ++i) {
-        thread_pool.ExecuteJob(std::bind(DecodeImages, std::ref(decode_info_per_thread[i]), rocjpeg_utils, std::ref(decode_params), save_images, std::ref(output_file_path), batch_size, device_id));
+        thread_pool.ExecuteJob(std::bind(DecodeImages, std::ref(decode_info_per_thread[i]), rocjpeg_utils, std::ref(decode_params), save_images, std::ref(output_file_path), batch_size, device_id, num_loops));
     }
     thread_pool.JoinThreads();
 

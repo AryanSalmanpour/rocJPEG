@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
     uint64_t num_jpegs_with_unsupported_resolution = 0;
     int current_batch_size = 0;
 
-    RocJpegUtils::ParseCommandLine(input_path, output_file_path, save_images, device_id, rocjpeg_backend, decode_params, nullptr, &batch_size, argc, argv);
+    RocJpegUtils::ParseCommandLine(input_path, output_file_path, save_images, device_id, rocjpeg_backend, decode_params, nullptr, &batch_size, nullptr, argc, argv);
     
     bool is_roi_valid = false;
     uint32_t roi_width;
