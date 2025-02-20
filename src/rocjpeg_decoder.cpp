@@ -391,23 +391,24 @@ RocJpegStatus RocJpegDecoder::CopyChannel(HipInteropDeviceMem& hip_interop_dev_m
 
         uint32_t channel_widths[ROCJPEG_MAX_COMPONENT] = {};
         uint32_t roi_width = decode_params->crop_rectangle.right - decode_params->crop_rectangle.left;
+        bool is_roi_width_valid = roi_width > 0 && roi_width <= hip_interop_dev_mem.width;
         switch (decode_params->output_format) {
             case ROCJPEG_OUTPUT_NATIVE:
                 switch (hip_interop_dev_mem.surface_format) {
                     case VA_FOURCC_444P:
-                        channel_widths[2] = channel_widths[1] = channel_widths[0] = is_roi_valid ? roi_width : hip_interop_dev_mem.width;
+                        channel_widths[2] = channel_widths[1] = channel_widths[0] = is_roi_width_valid ? roi_width : hip_interop_dev_mem.width;
                         break;
                     case VA_FOURCC_422V:
-                        channel_widths[2] = channel_widths[1] = channel_widths[0] = is_roi_valid ? roi_width : hip_interop_dev_mem.width;
+                        channel_widths[2] = channel_widths[1] = channel_widths[0] = is_roi_width_valid ? roi_width : hip_interop_dev_mem.width;
                         break;
                     case VA_FOURCC_YUY2:
-                        channel_widths[0] = (is_roi_valid ? roi_width : hip_interop_dev_mem.width) * 2;
+                        channel_widths[0] = (is_roi_width_valid ? roi_width : hip_interop_dev_mem.width) * 2;
                         break;
                     case VA_FOURCC_NV12:
-                        channel_widths[1] = channel_widths[0] = is_roi_valid ? roi_width : hip_interop_dev_mem.width;
+                        channel_widths[1] = channel_widths[0] = is_roi_width_valid ? roi_width : hip_interop_dev_mem.width;
                         break;
                     case VA_FOURCC_Y800:
-                        channel_widths[0] = is_roi_valid ? roi_width : hip_interop_dev_mem.width;
+                        channel_widths[0] = is_roi_width_valid ? roi_width : hip_interop_dev_mem.width;
                         break;
                     default:
                         ERR("Unknown output format!");
@@ -417,21 +418,21 @@ RocJpegStatus RocJpegDecoder::CopyChannel(HipInteropDeviceMem& hip_interop_dev_m
             case ROCJPEG_OUTPUT_YUV_PLANAR:
                 switch (hip_interop_dev_mem.surface_format) {
                     case VA_FOURCC_444P:
-                        channel_widths[2] = channel_widths[1] = channel_widths[0] = is_roi_valid ? roi_width : hip_interop_dev_mem.width;
+                        channel_widths[2] = channel_widths[1] = channel_widths[0] = is_roi_width_valid ? roi_width : hip_interop_dev_mem.width;
                         break;
                     case VA_FOURCC_422V:
-                        channel_widths[2] = channel_widths[1] = channel_widths[0] = is_roi_valid ? roi_width : hip_interop_dev_mem.width;
+                        channel_widths[2] = channel_widths[1] = channel_widths[0] = is_roi_width_valid ? roi_width : hip_interop_dev_mem.width;
                         break;
                     case VA_FOURCC_YUY2:
-                        channel_widths[0] = is_roi_valid ? roi_width : hip_interop_dev_mem.width;
+                        channel_widths[0] = is_roi_width_valid ? roi_width : hip_interop_dev_mem.width;
                         channel_widths[2] = channel_widths[1] = channel_widths[0] >> 1;
                         break;
                     case VA_FOURCC_NV12:
-                        channel_widths[0] = is_roi_valid ? roi_width : hip_interop_dev_mem.width;
+                        channel_widths[0] = is_roi_width_valid ? roi_width : hip_interop_dev_mem.width;
                         channel_widths[2] = channel_widths[1] = channel_widths[0] >> 1;
                         break;
                     case VA_FOURCC_Y800:
-                        channel_widths[0] = is_roi_valid ? roi_width : hip_interop_dev_mem.width;
+                        channel_widths[0] = is_roi_width_valid ? roi_width : hip_interop_dev_mem.width;
                         break;
                     default:
                         ERR("Unknown output format!");
@@ -439,13 +440,13 @@ RocJpegStatus RocJpegDecoder::CopyChannel(HipInteropDeviceMem& hip_interop_dev_m
                     }
                 break;
             case ROCJPEG_OUTPUT_Y:
-                channel_widths[0] = is_roi_valid ? roi_width : hip_interop_dev_mem.width;
+                channel_widths[0] = is_roi_width_valid ? roi_width : hip_interop_dev_mem.width;
                 break;
             case ROCJPEG_OUTPUT_RGB:
-                channel_widths[0] = (is_roi_valid ? roi_width : hip_interop_dev_mem.width) * 3;
+                channel_widths[0] = (is_roi_width_valid ? roi_width : hip_interop_dev_mem.width) * 3;
                 break;
             case ROCJPEG_OUTPUT_RGB_PLANAR:
-                channel_widths[2] = channel_widths[1] = channel_widths[0] = is_roi_valid ? roi_width : hip_interop_dev_mem.width;
+                channel_widths[2] = channel_widths[1] = channel_widths[0] = is_roi_width_valid ? roi_width : hip_interop_dev_mem.width;
                 break;
             default:
                 ERR("Unknown output format!");
