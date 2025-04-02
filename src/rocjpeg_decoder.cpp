@@ -23,9 +23,20 @@ THE SOFTWARE.
 #include "rocjpeg_decoder.h"
 
 RocJpegDecoder::RocJpegDecoder(RocJpegBackend backend, int device_id) :
-    num_devices_{0}, device_id_ {device_id}, hip_stream_ {0}, backend_{backend} {}
+    num_devices_{0}, device_id_ {device_id}, hip_stream_ {0}, backend_{backend}, stop_post_processing_thread_{false} {
+
+    // Start the post processing thread
+    post_processing_thread_ = std::thread(&RocJpegDecoder::PostProcessingThreadFunc, this);
+}
 
 RocJpegDecoder::~RocJpegDecoder() {
+    {
+        std::lock_guard<std::mutex> lock(post_processing_mutex_);
+        stop_post_processing_thread_ = true;
+    }
+    post_processing_cv_.notify_one();
+    post_processing_thread_.join();
+
     if (hip_stream_) {
         hipError_t hip_status = hipStreamDestroy(hip_stream_);
         if (hip_status != hipSuccess) {
@@ -702,4 +713,28 @@ RocJpegStatus RocJpegDecoder::GetYOutputFormat(HipInteropDeviceMem& hip_interop_
         CHECK_ROCJPEG(CopyChannel(hip_interop_dev_mem, picture_height, 0, destination, decode_params, is_roi_valid));
     }
     return ROCJPEG_STATUS_SUCCESS;
+}
+
+/*** @brief Function executed by the post-processing thread.
+*
+* This function is responsible for handling post-processing tasks (e.g., VA-API/HIP interops, Color space converion using HIP kernels)
+* in a separate thread. It ensures that the necessary operations
+* are performed after the decoding process, such as data formatting,
+* filtering, or any other required adjustments.
+*
+* This function is typically invoked internally and is not meant
+* to be called directly by the user.
+*/
+void RocJpegDecoder::PostProcessingThreadFunc() {
+    std::cout << "Info: Starting the post-processing thread" << std::endl;
+    while (true) {
+        {
+            std::unique_lock<std::mutex> lock(post_processing_mutex_);
+            post_processing_cv_.wait(lock, [this]() { return stop_post_processing_thread_.load(); });
+            if (stop_post_processing_thread_.load()) {
+                std::cout << "Info: Exiting from the post-processing thread" << std::endl;
+                break;
+            }
+        }
+    }
 }

@@ -27,6 +27,9 @@ THE SOFTWARE.
 #include <vector>
 #include <mutex>
 #include <queue>
+#include <thread>
+#include <condition_variable>
+#include <atomic>
 #include "../api/rocjpeg/rocjpeg.h"
 #include "rocjpeg_api_stream_handle.h"
 #include "rocjpeg_parser.h"
@@ -167,6 +170,19 @@ private:
     */
    RocJpegStatus GetYOutputFormat(HipInteropDeviceMem& hip_interop, uint32_t picture_width, uint32_t picture_height, RocJpegImage *destination, const RocJpegDecodeParams *decode_params, bool is_roi_valid);
 
+   /**
+    * @brief Function executed by the post-processing thread.
+    *
+    * This function is responsible for handling post-processing tasks (e.g., VA-API/HIP interops, Color space converion using HIP kernels)
+    * in a separate thread. It ensures that the necessary operations
+    * are performed after the decoding process, such as data formatting,
+    * filtering, or any other required adjustments.
+    *
+    * This function is typically invoked internally and is not meant
+    * to be called directly by the user.
+    */
+   void PostProcessingThreadFunc();
+
    int num_devices_; // Number of available devices
    int device_id_; // ID of the device to be used
    hipDeviceProp_t hip_dev_prop_; // HIP device properties
@@ -174,6 +190,11 @@ private:
    std::mutex mutex_; // Mutex for thread safety
    RocJpegBackend backend_; // RocJpeg backend
    RocJpegVappiDecoder jpeg_vaapi_decoder_; // RocJpeg VAAPI decoder object
+   std::mutex post_processing_mutex_; // Mutex used to synchronize access to post-processing operations,
+   std::condition_variable post_processing_cv_; // A condition variable used to synchronize threads during post-processing.
+   std::thread post_processing_thread_; // Thread used for handling post-processing tasks asynchronously.
+   std::atomic<bool> stop_post_processing_thread_; // A thread-safe atomic flag used to signal the stopping of the post-processing thread.
+
 };
 
 #endif //ROC_JPEG_DECODER_H_
