@@ -83,6 +83,10 @@ void RocJpegVaapiMemoryPool::SetPoolSize(uint32_t max_pool_size) {
     max_pool_size_ = max_pool_size;
 }
 
+const uint32_t RocJpegVaapiMemoryPool::GetPoolSize() const {
+    return max_pool_size_;
+}
+
 void RocJpegVaapiMemoryPool::SetVaapiDisplay(const VADisplay& va_display) {
     va_display_ = va_display;
 }
@@ -369,7 +373,7 @@ RocJpegStatus RocJpegVappiDecoder::InitializeDecoder(std::string device_name, in
     vaapi_mem_pool_->SetVaapiDisplay(va_display_);
 
     GetNumJpegCores();
-    vaapi_mem_pool_->SetPoolSize(current_vcn_jpeg_spec_.num_jpeg_cores + 1);
+    vaapi_mem_pool_->SetPoolSize(3 * current_vcn_jpeg_spec_.num_jpeg_cores + 1);
 
     return ROCJPEG_STATUS_SUCCESS;
 }
@@ -1052,4 +1056,8 @@ void RocJpegVappiDecoder::GetGpuUuids() {
         }
         closedir(dir);
     }
+}
+
+const uint32_t RocJpegVappiDecoder::GetMaxNumSurfaces() const {
+    return vaapi_mem_pool_->GetPoolSize() - 1;
 }

@@ -139,6 +139,15 @@ class RocJpegVaapiMemoryPool {
         void SetPoolSize(uint32_t max_pool_size);
 
         /**
+         * @brief Retrieves the size of the pool.
+         * 
+         * This method provides the size of the pool used by the decoder.
+         * It does not modify any internal state as it is a const method.
+         * 
+         * @return The size of the pool.
+         */
+        const uint32_t GetPoolSize() const;
+        /**
          * @brief Sets the VADisplay for the memory pool.
          * @param va_display The VADisplay to be set.
          */
@@ -331,6 +340,16 @@ public:
      * @return The status of the operation.
      */
     RocJpegStatus SetSurfaceAsIdle(VASurfaceID surface_id);
+
+    /**
+     * @brief Retrieves the maximum number of surfaces supported by the decoder.
+     *
+     * This method provides the maximum number of surfaces that can be used by the decoder.
+     * It does not modify any internal state as it is a const method.
+     *
+     * @return The maximum number of surfaces.
+     */
+    const uint32_t GetMaxNumSurfaces() const;
 private:
     int device_id_; // The ID of the device
     int drm_fd_; // The file descriptor for the DRM device

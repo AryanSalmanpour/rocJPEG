@@ -183,6 +183,14 @@ private:
     */
    void PostProcessingThreadFunc();
 
+   void PostProcessTask(
+      int i, int current_batch_size,
+      const std::vector<VASurfaceID>& current_surface_ids,
+      const std::vector<JpegStreamParameters>& jpeg_streams_params,
+      const RocJpegDecodeParams* decode_params,
+      RocJpegImage* destinations,
+      const VcnJpegSpec& current_vcn_jpeg_spec);
+
    int num_devices_; // Number of available devices
    int device_id_; // ID of the device to be used
    hipDeviceProp_t hip_dev_prop_; // HIP device properties
@@ -194,7 +202,7 @@ private:
    std::condition_variable post_processing_cv_; // A condition variable used to synchronize threads during post-processing.
    std::thread post_processing_thread_; // Thread used for handling post-processing tasks asynchronously.
    std::atomic<bool> stop_post_processing_thread_; // A thread-safe atomic flag used to signal the stopping of the post-processing thread.
-
+   std::queue<std::function<void()>> post_processing_queue_;
 };
 
 #endif //ROC_JPEG_DECODER_H_

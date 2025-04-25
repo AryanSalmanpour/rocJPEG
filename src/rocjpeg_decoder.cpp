@@ -219,6 +219,7 @@ RocJpegStatus RocJpegDecoder::DecodeBatched(RocJpegStreamHandle *jpeg_streams, i
     current_surface_ids.resize(batch_size);
     jpeg_streams_params.resize(batch_size);
     VcnJpegSpec current_vcn_jpeg_spec = jpeg_vaapi_decoder_.GetCurrentVcnJpegSpec();
+    uint32_t max_num_surfaces = jpeg_vaapi_decoder_.GetMaxNumSurfaces();
 
     for (int i = 0; i < batch_size; i += current_vcn_jpeg_spec.num_jpeg_cores) {
         int batch_end = std::min(i + static_cast<int>(current_vcn_jpeg_spec.num_jpeg_cores), batch_size);
@@ -230,81 +231,129 @@ RocJpegStatus RocJpegDecoder::DecodeBatched(RocJpegStreamHandle *jpeg_streams, i
             jpeg_streams_params[j] = std::move(*jpeg_stream_params);
         }
 
-        CHECK_ROCJPEG(jpeg_vaapi_decoder_.SubmitDecodeBatched(jpeg_streams_params.data() + i, current_batch_size, &decode_params[i], current_surface_ids.data() + i));
+        {
+            std::unique_lock<std::mutex> lock(post_processing_mutex_);
+            post_processing_cv_.wait(lock, [&]() { return (((post_processing_queue_.size() + 1) * current_vcn_jpeg_spec.num_jpeg_cores) <= max_num_surfaces);});
+            CHECK_ROCJPEG(jpeg_vaapi_decoder_.SubmitDecodeBatched(jpeg_streams_params.data() + i, current_batch_size, &decode_params[i], current_surface_ids.data() + i));
+            // Enqueue the task
+            post_processing_queue_.emplace(std::bind(
+                &RocJpegDecoder::PostProcessTask, this,
+                i, current_batch_size, current_surface_ids, jpeg_streams_params,
+                decode_params, destinations, current_vcn_jpeg_spec));
 
-        for (int k = 0; k < current_batch_size; k++) {
-            HipInteropDeviceMem hip_interop_dev_mem = {};
-            VASurfaceID current_surface_id = *(current_surface_ids.data() + k + i);
-            const JpegStreamParameters *jpeg_stream_params = jpeg_streams_params.data() + k + i;
-            CHECK_ROCJPEG(jpeg_vaapi_decoder_.SyncSurface(current_surface_id));
-            CHECK_ROCJPEG(jpeg_vaapi_decoder_.GetHipInteropMem(current_surface_id, hip_interop_dev_mem));
-
-            uint16_t chroma_height = 0;
-            uint16_t picture_width = 0;
-            uint16_t picture_height = 0;
-            bool is_roi_valid = false;
-            uint32_t roi_width;
-            uint32_t roi_height;
-            roi_width = decode_params[k + i].crop_rectangle.right - decode_params[k + i].crop_rectangle.left;
-            roi_height = decode_params[k + i].crop_rectangle.bottom - decode_params[k + i].crop_rectangle.top;
-    
-            if (roi_width > 0 && roi_height > 0 && roi_width <= jpeg_stream_params->picture_parameter_buffer.picture_width && roi_height <= jpeg_stream_params->picture_parameter_buffer.picture_height) {
-                is_roi_valid = true;
-            }
-
-            picture_width = is_roi_valid ? roi_width : jpeg_stream_params->picture_parameter_buffer.picture_width;
-            picture_height = is_roi_valid ? roi_height : jpeg_stream_params->picture_parameter_buffer.picture_height;
-
-            if (is_roi_valid && current_vcn_jpeg_spec.can_roi_decode) {
-                // Set is_roi_valid to false because in this case, the hardware handles the ROI decode and we don't need to calculate the roi_offset
-                // later in the following functions (e.g., CopyChannel, GetPlanarYUVOutputFormat, etc) to copy the crop rectangle
-                is_roi_valid = false;
-            }
-
-            switch (decode_params[k + i].output_format) {
-                case ROCJPEG_OUTPUT_NATIVE:
-                    // Copy the native decoded output buffers from interop memory directly to the destination buffers
-                    CHECK_ROCJPEG(GetChromaHeight(hip_interop_dev_mem.surface_format, picture_height, chroma_height));
-                    // Copy Luma (first channel) for any surface format
-                    CHECK_ROCJPEG(CopyChannel(hip_interop_dev_mem, picture_height, 0, &destinations[k + i], &decode_params[k + i], is_roi_valid));
-                    if (hip_interop_dev_mem.surface_format == VA_FOURCC_NV12) {
-                        // Copy the second channel (UV interleaved) for NV12
-                        CHECK_ROCJPEG(CopyChannel(hip_interop_dev_mem, chroma_height, 1, &destinations[k + i], &decode_params[k + i], is_roi_valid));
-                    } else if (hip_interop_dev_mem.surface_format == VA_FOURCC_444P ||
-                            hip_interop_dev_mem.surface_format == VA_FOURCC_422V) {
-                        // Copy the second and third channels for YUV444 and YUV440 (i.e., YUV422V)
-                        CHECK_ROCJPEG(CopyChannel(hip_interop_dev_mem, chroma_height, 1, &destinations[k + i], &decode_params[k + i], is_roi_valid));
-                        CHECK_ROCJPEG(CopyChannel(hip_interop_dev_mem, chroma_height, 2, &destinations[k + i], &decode_params[k + i], is_roi_valid));
-                    }
-                    break;
-                case ROCJPEG_OUTPUT_YUV_PLANAR:
-                    CHECK_ROCJPEG(GetChromaHeight(hip_interop_dev_mem.surface_format, picture_height, chroma_height));
-                    CHECK_ROCJPEG(GetPlanarYUVOutputFormat(hip_interop_dev_mem, picture_width,
-                                                        picture_height, chroma_height, &destinations[k + i], &decode_params[k + i], is_roi_valid));
-                    break;
-                case ROCJPEG_OUTPUT_Y:
-                    CHECK_ROCJPEG(GetYOutputFormat(hip_interop_dev_mem, picture_width,
-                                                picture_height, &destinations[k + i], &decode_params[k + i], is_roi_valid));
-                    break;
-                case ROCJPEG_OUTPUT_RGB:
-                    CHECK_ROCJPEG(ColorConvertToRGB(hip_interop_dev_mem, picture_width,
-                                                            picture_height, &destinations[k + i], &decode_params[k + i], is_roi_valid));
-                    break;
-                case ROCJPEG_OUTPUT_RGB_PLANAR:
-                    CHECK_ROCJPEG(ColorConvertToRGBPlanar(hip_interop_dev_mem, picture_width,
-                                                            picture_height, &destinations[k + i], &decode_params[k + i], is_roi_valid));
-                    break;
-                default:
-                    break;
-            }
-            CHECK_ROCJPEG(jpeg_vaapi_decoder_.SetSurfaceAsIdle(current_surface_id));
         }
+        post_processing_cv_.notify_one();
+    }
 
+    //wait till all the tasks are done
+    {
+        std::unique_lock<std::mutex> lock(post_processing_mutex_);
+        post_processing_cv_.wait(lock, [this]() { return post_processing_queue_.empty();});
     }
 
     CHECK_HIP(hipStreamSynchronize(hip_stream_));
     return ROCJPEG_STATUS_SUCCESS;
 }
+
+void RocJpegDecoder::PostProcessTask(
+    int i, int current_batch_size,
+    const std::vector<VASurfaceID>& current_surface_ids,
+    const std::vector<JpegStreamParameters>& jpeg_streams_params,
+    const RocJpegDecodeParams* decode_params,
+    RocJpegImage* destinations,
+    const VcnJpegSpec& current_vcn_jpeg_spec) {
+    for (int k = 0; k < current_batch_size; k++) {
+        HipInteropDeviceMem hip_interop_dev_mem = {};
+        VASurfaceID current_surface_id = *(current_surface_ids.data() + k + i);
+        const JpegStreamParameters* jpeg_stream_params = jpeg_streams_params.data() + k + i;
+
+        jpeg_vaapi_decoder_.SyncSurface(current_surface_id);
+        jpeg_vaapi_decoder_.GetHipInteropMem(current_surface_id, hip_interop_dev_mem);
+
+        uint16_t chroma_height = 0;
+        uint16_t picture_width = 0;
+        uint16_t picture_height = 0;
+        bool is_roi_valid = false;
+        uint32_t roi_width = decode_params[k + i].crop_rectangle.right - decode_params[k + i].crop_rectangle.left;
+        uint32_t roi_height = decode_params[k + i].crop_rectangle.bottom - decode_params[k + i].crop_rectangle.top;
+
+        if (roi_width > 0 && roi_height > 0 &&
+            roi_width <= jpeg_stream_params->picture_parameter_buffer.picture_width &&
+            roi_height <= jpeg_stream_params->picture_parameter_buffer.picture_height) {
+            is_roi_valid = true;
+        }
+
+        picture_width = is_roi_valid ? roi_width : jpeg_stream_params->picture_parameter_buffer.picture_width;
+        picture_height = is_roi_valid ? roi_height : jpeg_stream_params->picture_parameter_buffer.picture_height;
+
+        if (is_roi_valid && current_vcn_jpeg_spec.can_roi_decode) {
+            is_roi_valid = false;
+        }
+
+        switch (decode_params[k + i].output_format) {
+            case ROCJPEG_OUTPUT_NATIVE:
+                GetChromaHeight(hip_interop_dev_mem.surface_format, picture_height, chroma_height);
+                CopyChannel(hip_interop_dev_mem, picture_height, 0, &destinations[k + i], &decode_params[k + i], is_roi_valid);
+                if (hip_interop_dev_mem.surface_format == VA_FOURCC_NV12) {
+                    CopyChannel(hip_interop_dev_mem, chroma_height, 1, &destinations[k + i], &decode_params[k + i], is_roi_valid);
+                } else if (hip_interop_dev_mem.surface_format == VA_FOURCC_444P ||
+                           hip_interop_dev_mem.surface_format == VA_FOURCC_422V) {
+                    CopyChannel(hip_interop_dev_mem, chroma_height, 1, &destinations[k + i], &decode_params[k + i], is_roi_valid);
+                    CopyChannel(hip_interop_dev_mem, chroma_height, 2, &destinations[k + i], &decode_params[k + i], is_roi_valid);
+                }
+                break;
+            case ROCJPEG_OUTPUT_YUV_PLANAR:
+                GetChromaHeight(hip_interop_dev_mem.surface_format, picture_height, chroma_height);
+                GetPlanarYUVOutputFormat(hip_interop_dev_mem, picture_width, picture_height, chroma_height, &destinations[k + i], &decode_params[k + i], is_roi_valid);
+                break;
+            case ROCJPEG_OUTPUT_Y:
+                GetYOutputFormat(hip_interop_dev_mem, picture_width, picture_height, &destinations[k + i], &decode_params[k + i], is_roi_valid);
+                break;
+            case ROCJPEG_OUTPUT_RGB:
+                ColorConvertToRGB(hip_interop_dev_mem, picture_width, picture_height, &destinations[k + i], &decode_params[k + i], is_roi_valid);
+                break;
+            case ROCJPEG_OUTPUT_RGB_PLANAR:
+                ColorConvertToRGBPlanar(hip_interop_dev_mem, picture_width, picture_height, &destinations[k + i], &decode_params[k + i], is_roi_valid);
+                break;
+            default:
+                break;
+        }
+        jpeg_vaapi_decoder_.SetSurfaceAsIdle(current_surface_id);
+    }
+}
+
+/*** @brief Function executed by the post-processing thread.
+*
+* This function is responsible for handling post-processing tasks (e.g., VA-API/HIP interops, Color space converion using HIP kernels)
+* in a separate thread. It ensures that the necessary operations
+* are performed after the decoding process, such as data formatting,
+* filtering, or any other required adjustments.
+*
+* This function is typically invoked internally and is not meant
+* to be called directly by the user.
+*/
+void RocJpegDecoder::PostProcessingThreadFunc() {
+    std::cout << "Info: Starting the post-processing thread" << std::endl;
+    while (true) {
+        std::function<void()> task;
+        {
+            std::unique_lock<std::mutex> lock(post_processing_mutex_);
+            post_processing_cv_.wait(lock, [this]() { return !post_processing_queue_.empty() || stop_post_processing_thread_.load(); });
+            if (stop_post_processing_thread_.load() && post_processing_queue_.empty()) {
+                std::cout << "Info: Exiting from the post-processing thread" << std::endl;
+                break;
+            }
+            task = std::move(post_processing_queue_.front());
+        }
+        task();
+        {
+            std::unique_lock<std::mutex> lock(post_processing_mutex_);
+            post_processing_queue_.pop();
+        }
+        post_processing_cv_.notify_one();
+    }
+}
+
 /**
  * @brief Retrieves the image information from the JPEG stream.
  *
@@ -713,28 +762,4 @@ RocJpegStatus RocJpegDecoder::GetYOutputFormat(HipInteropDeviceMem& hip_interop_
         CHECK_ROCJPEG(CopyChannel(hip_interop_dev_mem, picture_height, 0, destination, decode_params, is_roi_valid));
     }
     return ROCJPEG_STATUS_SUCCESS;
-}
-
-/*** @brief Function executed by the post-processing thread.
-*
-* This function is responsible for handling post-processing tasks (e.g., VA-API/HIP interops, Color space converion using HIP kernels)
-* in a separate thread. It ensures that the necessary operations
-* are performed after the decoding process, such as data formatting,
-* filtering, or any other required adjustments.
-*
-* This function is typically invoked internally and is not meant
-* to be called directly by the user.
-*/
-void RocJpegDecoder::PostProcessingThreadFunc() {
-    std::cout << "Info: Starting the post-processing thread" << std::endl;
-    while (true) {
-        {
-            std::unique_lock<std::mutex> lock(post_processing_mutex_);
-            post_processing_cv_.wait(lock, [this]() { return stop_post_processing_thread_.load(); });
-            if (stop_post_processing_thread_.load()) {
-                std::cout << "Info: Exiting from the post-processing thread" << std::endl;
-                break;
-            }
-        }
-    }
 }
