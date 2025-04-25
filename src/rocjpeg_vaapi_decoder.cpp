@@ -373,7 +373,7 @@ RocJpegStatus RocJpegVappiDecoder::InitializeDecoder(std::string device_name, in
     vaapi_mem_pool_->SetVaapiDisplay(va_display_);
 
     GetNumJpegCores();
-    vaapi_mem_pool_->SetPoolSize(3 * current_vcn_jpeg_spec_.num_jpeg_cores + 1);
+    vaapi_mem_pool_->SetPoolSize(current_vcn_jpeg_spec_.num_jpeg_cores * current_vcn_jpeg_spec_.num_jpeg_cores + 1);
 
     return ROCJPEG_STATUS_SUCCESS;
 }
