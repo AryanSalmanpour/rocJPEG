@@ -28,6 +28,7 @@ THE SOFTWARE.
 #include <iostream>
 #include <cstring>
 #include <mutex>
+#include <vector>
 #include "rocjpeg_commons.h"
 
 #pragma once
@@ -168,7 +169,7 @@ typedef struct JpegParameterBuffersType {
     HuffmanTableBuffer huffman_table_buffer;
     SliceParameterBuffer slice_parameter_buffer;
     ChromaSubsampling chroma_subsampling;
-    const uint8_t* slice_data_buffer;
+    std::vector<uint8_t> slice_data_buffer;
 } JpegStreamParameters;
 
 /**

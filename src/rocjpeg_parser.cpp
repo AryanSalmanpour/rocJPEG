@@ -404,13 +404,13 @@ bool RocJpegStreamParser::ParseEOI() {
     }
 
     const uint8_t *stream_temp = stream_;
-    while (stream_temp <= stream_end_ && !(*stream_temp == 0xFF  && *(stream_temp + 1) == EOI)) {
+    while (stream_temp + 1 <= stream_end_ && !(*stream_temp == 0xFF && *(stream_temp + 1) == EOI)) {
         stream_temp++;
-        continue;
     }
 
-    jpeg_stream_parameters_.slice_parameter_buffer.slice_data_size = stream_temp - stream_;
-    jpeg_stream_parameters_.slice_data_buffer = stream_;
+    uint32_t slice_data_size = stream_temp - stream_;
+    jpeg_stream_parameters_.slice_parameter_buffer.slice_data_size = slice_data_size;
+    jpeg_stream_parameters_.slice_data_buffer.assign(stream_, stream_ + slice_data_size);
 
     return true;
 }

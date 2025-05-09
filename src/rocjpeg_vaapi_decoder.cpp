@@ -670,7 +670,7 @@ RocJpegStatus RocJpegVappiDecoder::SubmitDecode(const JpegStreamParameters *jpeg
     CHECK_VAAPI(vaCreateBuffer(va_display_, va_context_id_, VAIQMatrixBufferType, sizeof(VAIQMatrixBufferJPEGBaseline), 1, (void *)&jpeg_stream_params->quantization_matrix_buffer, &va_quantization_matrix_buf_id_));
     CHECK_VAAPI(vaCreateBuffer(va_display_, va_context_id_, VAHuffmanTableBufferType, sizeof(VAHuffmanTableBufferJPEGBaseline), 1, (void *)&jpeg_stream_params->huffman_table_buffer, &va_huffmantable_buf_id_));
     CHECK_VAAPI(vaCreateBuffer(va_display_, va_context_id_, VASliceParameterBufferType, sizeof(VASliceParameterBufferJPEGBaseline), 1, (void *)&jpeg_stream_params->slice_parameter_buffer, &va_slice_param_buf_id_));
-    CHECK_VAAPI(vaCreateBuffer(va_display_, va_context_id_, VASliceDataBufferType, jpeg_stream_params->slice_parameter_buffer.slice_data_size, 1, (void *)jpeg_stream_params->slice_data_buffer, &va_slice_data_buf_id_));
+    CHECK_VAAPI(vaCreateBuffer(va_display_, va_context_id_, VASliceDataBufferType, jpeg_stream_params->slice_parameter_buffer.slice_data_size, 1, (void *)jpeg_stream_params->slice_data_buffer.data(), &va_slice_data_buf_id_));
 
     CHECK_VAAPI(vaBeginPicture(va_display_, va_context_id_,  surface_id));
     CHECK_VAAPI(vaRenderPicture(va_display_, va_context_id_, &va_picture_parameter_buf_id_, 1));
@@ -822,7 +822,7 @@ RocJpegStatus RocJpegVappiDecoder::SubmitDecodeBatched(JpegStreamParameters *jpe
             CHECK_VAAPI(vaCreateBuffer(va_display_, va_context_id_, VAIQMatrixBufferType, sizeof(VAIQMatrixBufferJPEGBaseline), 1, (void *)&jpeg_streams_params[idx].quantization_matrix_buffer, &va_quantization_matrix_buf_id_));
             CHECK_VAAPI(vaCreateBuffer(va_display_, va_context_id_, VAHuffmanTableBufferType, sizeof(VAHuffmanTableBufferJPEGBaseline), 1, (void *)&jpeg_streams_params[idx].huffman_table_buffer, &va_huffmantable_buf_id_));
             CHECK_VAAPI(vaCreateBuffer(va_display_, va_context_id_, VASliceParameterBufferType, sizeof(VASliceParameterBufferJPEGBaseline), 1, (void *)&jpeg_streams_params[idx].slice_parameter_buffer, &va_slice_param_buf_id_));
-            CHECK_VAAPI(vaCreateBuffer(va_display_, va_context_id_, VASliceDataBufferType, jpeg_streams_params[idx].slice_parameter_buffer.slice_data_size, 1, (void *)jpeg_streams_params[idx].slice_data_buffer, &va_slice_data_buf_id_));
+            CHECK_VAAPI(vaCreateBuffer(va_display_, va_context_id_, VASliceDataBufferType, jpeg_streams_params[idx].slice_parameter_buffer.slice_data_size, 1, (void *)jpeg_streams_params[idx].slice_data_buffer.data(), &va_slice_data_buf_id_));
 
             CHECK_VAAPI(vaBeginPicture(va_display_, va_context_id_, surface_ids[idx]));
             CHECK_VAAPI(vaRenderPicture(va_display_, va_context_id_, &va_picture_parameter_buf_id_, 1));
