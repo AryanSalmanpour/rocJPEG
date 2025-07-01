@@ -164,6 +164,7 @@ int main(int argc, char **argv) {
     bool is_file = false;
     RocJpegBackend rocjpeg_backend = ROCJPEG_BACKEND_HARDWARE;
     RocJpegHandle rocjpeg_handle = nullptr;
+    RocJpegHandle rocjpeg_handle_thread = nullptr;
     std::vector<std::vector<RocJpegStreamHandle>> rocjpeg_stream_handles;
     RocJpegDecodeParams decode_params = {};
     RocJpegUtils rocjpeg_utils;
@@ -189,9 +190,11 @@ int main(int argc, char **argv) {
     }
 
     CHECK_ROCJPEG(rocJpegCreate(rocjpeg_backend, device_id, &rocjpeg_handle));
+    CHECK_ROCJPEG(rocJpegCreate(rocjpeg_backend, device_id, &rocjpeg_handle_thread));
+
     batch_size = std::min(batch_size, static_cast<int>(file_paths.size()));
 
-    std::thread decoder_thread(DecoderThreadFunc, rocjpeg_handle, std::ref(rocjpeg_utils), std::ref(total_images), save_images, std::ref(output_file_path), is_dir, std::ref(time_per_image_all), std::ref(mpixels_all));
+    std::thread decoder_thread(DecoderThreadFunc, rocjpeg_handle_thread, std::ref(rocjpeg_utils), std::ref(total_images), save_images, std::ref(output_file_path), is_dir, std::ref(time_per_image_all), std::ref(mpixels_all));
 
     BatchQueue batch_queue(max_queue_size);
     rocjpeg_stream_handles.resize(max_queue_size);
@@ -360,6 +363,7 @@ int main(int argc, char **argv) {
         }
     }
     CHECK_ROCJPEG(rocJpegDestroy(rocjpeg_handle));
+    CHECK_ROCJPEG(rocJpegDestroy(rocjpeg_handle_thread));
     for (int n = 0; n < max_queue_size; n++) {
         for(auto& it : rocjpeg_stream_handles[n]) {
             CHECK_ROCJPEG(rocJpegStreamDestroy(it));
