@@ -34,6 +34,7 @@ THE SOFTWARE.
 #include <functional>
 #include <condition_variable>
 #include <queue>
+#include <atomic>
 #if __cplusplus >= 201703L && __has_include(<filesystem>)
     #include <filesystem>
     namespace fs = std::filesystem;
